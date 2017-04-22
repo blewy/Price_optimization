@@ -12,8 +12,8 @@ retention.f <- function(x,b=-2.5,c=5){
 }
 
 #Margin: currente price + increase - costs
-margin.f  <- function(premium,pure_premium,x){
-  (premium*(1+x)-pure_premium)*(retention.f(x))
+margin.f  <- function(premium,cost,x){
+  (premium*(1+x)-cost)*(retention.f(x))
 }
 
 #volume (Margin currente price + increase) * retain customers
@@ -79,6 +79,24 @@ eval.func=function(x,data=Book1,metric=4)
   return(c(f1/D,f2,f3,1-f1/D,-f2,-f3)[metric]) #change sign to be able to minimize
 }
 
+# Function that uses tidyverse functions
+eval.func2 <- function(x,data=Book1, metric=1){
+  data <- data %>%
+    mutate(increase =x) %>% summarise(
+            f1 =  sum(retention.f(increase)) /n() ,
+            f2 =  sum(margin.f(base_price,cost,increase)),
+            f3 =  sum(volume.f(base_price,increase)),
+            inv_f1=1-f1,
+            inv_f2=-f2,
+            inv_f3=-f3) %>%
+    select(f1,f2,f3,inv_f1,inv_f2,inv_f3)
+  return(as.numeric(data[metric]))
+}
+
+D=nrow(Book1) # dimension
+s=rep(0,D) 
+eval.func2(s,Book1,metric = 1)
+eval.func(s,Book1,metric = 3)
 #test evl function
 #D=nrow(Book1) # dimension
 #s=rep(0,D) 
@@ -99,34 +117,40 @@ rchange=function(par,lower,upper) # real value change
   hchange(par,lower,upper,rnorm,mean=0,sd=0.5,round=FALSE) 
 }
 s=runif(D,0,1) # initial search
-hill.solution<-hclimbing(s,eval.func,change=rchange,lower=rep(0,D),upper=rep(0.5,D),control=C,type="max")
+set.seed(12345) #
+hill.solution<-hclimbing(s,eval.func2,change=rchange,lower=rep(0,D),upper=rep(1,D),control=C,type="max",data=Book1,metric=1)
 hill.solution
 
+# set.seed(12345) #
+# hclimbing(s,eval.func,change=rchange,lower=rep(0,D),upper=rep(1,D),control=C,type="max",data=Book1,metric=1)
+# 
+# #Benchmark new function
+# library(microbenchmark)
+# record_temp_perf_2<- microbenchmark(a <- hclimbing(s,eval.func2,change=rchange,lower=rep(0,D),upper=rep(0.5,D),control=C,type="max",datafr=Book1,metric=1), 
+#                b <- hclimbing(s,eval.func,change=rchange,lower=rep(0,D),upper=rep(0.5,D),control=C,type="max",metric=1))
+# 
+# # For larger data set
+# autoplot(record_temp_perf_2)
+
 #-------------------- Population Based Search ---------------------
+
 ###------------ Genetic and Evolutionary Algorithms ---------------
 
 library(genalg) # load genalg
 D=nrow(Book1) # dimension
 
-monitor=function(obj)
-{ if(i==1)
-{ plot(obj$population,xlim=c(0,1),ylim=c(0,1),
-       xlab="x1",ylab="x2",type="p",pch=16,
-       col=gray(1-i/maxit))
-}
-  else if(i%%K==0) points(obj$population,pch=16,
-                          col=gray(1-i/maxit))
-  i<<-i+1 # global update
-}
+#This methos only minimizes s´ó we need to chenge eval_function
+rbga.eval.func <- function(x) eval.func2(x,metric = 4) 
 
-maxit=1000
+maxit=10000
 K=5 # store population values every K generations
 i=1 # initial generation
 set.seed(12345) # set for replicability purposes
 E=rbga(rep(0,D),rep(1,D),popSize=K,iters=maxit,
-       monitorFunc=monitor,evalFunc=eval.func)
+       #monitorFunc=
+       evalFunc=rbga.eval.func)
 b=which.min(E$evaluations) # best individual
-cat("best:",E$population[b,],"f:",E$evaluations[b],"\n")
+cat("best:",E$population[b,],"\n","f:",E$evaluations[b],"\n")
 
 plot(E)
 #plot(E, type="hist")
@@ -137,28 +161,28 @@ plot(E)
 
 library(DEoptim) # load DEoptim
 D=nrow(Book1) # dimension
-maxit=100
+maxit=10000
 set.seed(12345) # set for replicability
 C=DEoptim.control(strategy=1,NP=5,itermax=maxit,CR=0.9,F=0.8,
                   trace=25,storepopfrom=1,storepopfreq=1)
 # perform the optimization:
-D=suppressWarnings(DEoptim(eval.func,rep(0,D),rep(0.5,D),
-                           control=C))
+D=suppressWarnings(DEoptim(eval.func2,rep(0,D),rep(1,D),
+                           control=C,data=Book1,metric=4))
 # show result:
 summary(D)
-plot(D,plot.type="storepop")
+#plot(D,plot.type="storepop")
 
 
 #---------------  Particle Swarm Optimization ------------
 library(pso)
 D=nrow(Book1) # dimension
-maxit=100
-s=5
+maxit=500
+s=50 # The swarm size. 
 set.seed(12345) # set for replicability
 C=list(trace=1,maxit=maxit,REPORT=1,trace.stats=1,s=s)
 # perform the optimization:
-PSO=psoptim(rep(NA,D),fn=eval.func,lower=rep(0,D),
-            upper=rep(0.5,D),control=C)
+PSO=psoptim(rep(NA,D),fn=eval.func2,lower=rep(0,D),
+            upper=rep(1,D),control=C,data=Book1,metric=4)
 
 j=1 # j-th parameter
 plot(xlim=c(1,maxit),rep(1,s),PSO$stats$x[[1]][j,],pch=19,
@@ -174,26 +198,31 @@ cat("best:",PSO$par,"f:",PSO$value,"\n")
 
 ###-------- Weighted-Formula Approach -------------
 
-fes1=function(data,x)
-{ 
-  D=nrow(data);f1=0;f2=0;f3=0
-for(i in 1:D)
-  { 
-  f1=f1+retention.f(x[i])
-  f2=f2+margin.f(data$base_price[i],data$cost[i],x[i])
-  f3=f3+volume.f(data$base_price[i],x[i])
-  }
-return(c(f1/D,f2,f3))
+# Function that uses tidyverse functions
+eval.func3 <- function(x,data=Book1,objective="max"){
+  data <- data %>%
+    mutate(increase =x) %>% summarise(
+      f1 =  sum(retention.f(increase)) , #pessoas retidas
+      f2 =  sum(margin.f(base_price,cost,increase)),
+      f3 =  sum(volume.f(base_price,increase)),
+      inv_f1=-f1, 
+      inv_f2=-f2,
+      inv_f3=-f3) %>%
+    select(f1,f2,f3,inv_f1,inv_f2,inv_f3)
+  if (objective=="max") return(as.numeric(data[1:3]))
+  else return(as.numeric(data[4:6]))
 }
+
+#test function
+D=nrow(Book1) # dimension
+s=rep(0,D) 
+eval.func3(s,Book1,objective ="min")
 
 ###---- Linear Combination Multi objective Optimization -----
 
-x<-rep(0, dim(Book1)[1]) 
-fes1(Book1,x)
-
 library(genalg) # load genalg package
 set.seed(12345) # set for replicability
-step=5 # number of weight combinations
+step=4 # number of weight combinations
 w=matrix(ncol=3,nrow=step) # weight combinations
 # w[,1]=seq(1,0,length.out=step)
 # w[,2]=1-w[,1]
@@ -209,7 +238,6 @@ print(w)
 
 D=nrow(Book1) # dimension
 steps <- nrow(w)
-eval=function(x) return(-sum(W*fes1(Book1,x)))
 
 # stringMin: vector com o valor minimo de aumento
 # stringMax: Vector com o valor máximo de aumento
@@ -217,31 +245,19 @@ cat("real value task:\n")
 for(i in 1:steps)
 {
   W=w[i,] # rbga minimization goal
+  eval=function(x) return(sum(W*eval.func3(x,Book1,"min")))
   G=rbga(evalFunc=eval,stringMin=rep(0,D),stringMax=rep(1,D),
-         popSize=200,iters=1000)
+         popSize=20,iters=1000)
   b=G$population[which.min(G$evaluations),] # best solution
   cat("w",i,"best:",round(b,2))
-  cat(" f=(retention: ",round(fes1(Book1,b)[1],2)," (w=",W[1],"), margin: ",round(fes1(Book1,b)[2],2)," (w=",W[2],"),volume: ",round(fes1(Book1,b)[3],2)," (w=",W[3],")","\n",sep="")
-  res[i,]=fes1(Book1,b)
+  cat(" f=(retention: ",round(eval.func3(b,Book1,"max")[1]/D,2)," (w=",W[1],"), margin: ",round(eval.func3(b,Book1,"max")[2],2)," (w=",W[2],"),volume: ",round(eval.func3(b,Book1,"max")[3],2)," (w=",W[3],")","\n",sep="")
+  res[i,]=eval.func3(b,Book1,"max")
 }
 
-write.table(res,"./data/wf-fes1.csv",
-            row.names=FALSE,col.names=FALSE,sep=" ")
+#write.table(res,"./data/wf-fes1.csv",
+#            row.names=FALSE,col.names=FALSE,sep=" ")
   
-
 ###----------  Pareto Front Multi objective Optimization  --------------
-
-fes1.2=function(x)
-{ 
-  D=nrow(Book1);f1=0;f2=0;f3=0
-  for(i in 1:D)
-  { 
-    f1=f1+retention.f(x[i])
-    f2=f2+margin.f(Book1$base_price[i],Book1$cost[i],x[i])
-    f3=f3+volume.f(Book1$base_price[i],x[i])
-  }
-  return(c(1-f1/D,-f2,-f3)) #mudar o sinal para poder minimizar
-}
 
 library(mco)
 set.seed(12345)
@@ -250,33 +266,33 @@ m=3 # 3 objectives
 # --- real value task:
 D=nrow(Book1)  # dimension
 cat("real value task:\n")
-G=nsga2(fn=fes1.2,idim=D,odim=m,
+G=nsga2(fn=eval.func3,idim=D,odim=m,
         lower.bounds=rep(0,D),upper.bounds=rep(1,D),
-        popsize=20,generations=1:1000)
+        popsize=20,generations=1:10000,data=Book1, objective="min")
 # show best individuals:
 I=which(G[[1000]]$pareto.optimal)
 for(i in I)
 {
   x=round(G[[100]]$par[i,],digits=2); cat("Solution ",i,": ",x,"\n",sep=" ")
-  cat(" f=( retention: ",round(1-fes1.2(x)[1],2),", margin: ",-round(fes1.2(x)[2],2),", volume:",-round(fes1.2(x)[3],2),")",
+  cat(" f= (retention: ",round(eval.func3(x,objective = "max")[1]/D,2),", margin: ",round(eval.func3(x,objective = "max")[2],2),", volume:",round(eval.func3(x,objective = "max")[3],2),")",
       "\n",sep="")
   cat(" ------ ","\n")
 }
-# create PDF with Pareto front evolution:
-#pdf(file="nsga-fes1.pdf",paper="special",height=5,width=5)
-par(mar=c(4.0,4.0,0.1,0.1))
-I=1:100
-for(i in I)
-{ P=G[[i]]$value # objectives f1 and f2
-# color from light gray (75) to dark (1):
-COL=paste("gray",round(76-i*0.75),sep="")
-if(i==1) plot(P,xlim=c(0.5,5.0),ylim=c(0,2.0),
-              xlab="f1",ylab="f2",cex=0.5,col=COL)
-Pareto=P[G[[i]]$pareto.optimal,]
-# sort Pareto according to x axis:
-I=sort.int(Pareto[,1],index.return=TRUE)
-Pareto=Pareto[I$ix,]
-points(P,type="p",pch=1,cex=0.5,col=COL)
-lines(Pareto,type="l",cex=0.5,col=COL)
-}
+
+
+# par(mar=c(4.0,4.0,0.1,0.1))
+# I=1:100
+# for(i in I)
+# { P=G[[i]]$value # objectives f1 and f2
+# # color from light gray (75) to dark (1):
+# COL=paste("gray",round(76-i*0.75),sep="")
+# if(i==1) plot(P,xlim=c(0.5,5.0),ylim=c(0,2.0),
+#               xlab="f1",ylab="f2",cex=0.5,col=COL)
+# Pareto=P[G[[i]]$pareto.optimal,]
+# # sort Pareto according to x axis:
+# I=sort.int(Pareto[,1],index.return=TRUE)
+# Pareto=Pareto[I$ix,]
+# points(P,type="p",pch=1,cex=0.5,col=COL)
+# lines(Pareto,type="l",cex=0.5,col=COL)
+# }
 
