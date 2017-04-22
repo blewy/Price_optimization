@@ -12,7 +12,7 @@ I've used mainly the code from this fantastic book for R:
 - http://www.springer.com/br/book/9783319082622
 - https://www.amazon.com/Modern-Optimization-R-Use/dp/3319082620
 
-I prep some xls file with fake data, with the cost of production and current price of 99 products (I thought it was 100),
-and created some help functions to estimate retention, volume and margin of this 99 person portfolio.
+I prepared an xls file with fake data, with the cost of production and current price for 99 clients/contracts (I thought it was 100),
+and created some help functions to estimate retention, volume and margin of these 99 person portfolio.
 
 Enjoy the code and go to the book the learn more about optimization, it's a great book.
