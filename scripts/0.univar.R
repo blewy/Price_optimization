@@ -252,47 +252,64 @@ for(i in 1:steps)
   cat("w",i,"best:",round(b,2))
   cat(" f=(retention: ",round(eval.func3(b,Book1,"max")[1]/D,2)," (w=",W[1],"), margin: ",round(eval.func3(b,Book1,"max")[2],2)," (w=",W[2],"),volume: ",round(eval.func3(b,Book1,"max")[3],2)," (w=",W[3],")","\n",sep="")
   res[i,]=eval.func3(b,Book1,"max")
+  res[i,]
 }
+
 
 #write.table(res,"./data/wf-fes1.csv",
 #            row.names=FALSE,col.names=FALSE,sep=" ")
   
 ###----------  Pareto Front Multi objective Optimization  --------------
 
-library(mco)
-set.seed(12345)
-m=3 # 3 objectives
 
-# --- real value task:
-D=nrow(Book1)  # dimension
-cat("real value task:\n")
-G=nsga2(fn=eval.func3,idim=D,odim=m,
-        lower.bounds=rep(0,D),upper.bounds=rep(1,D),
-        popsize=20,generations=1:10000,data=Book1, objective="min")
-# show best individuals:
-I=which(G[[1000]]$pareto.optimal)
-for(i in I)
-{
-  x=round(G[[100]]$par[i,],digits=2); cat("Solution ",i,": ",x,"\n",sep=" ")
-  cat(" f= (retention: ",round(eval.func3(x,objective = "max")[1]/D,2),", margin: ",round(eval.func3(x,objective = "max")[2],2),", volume:",round(eval.func3(x,objective = "max")[3],2),")",
-      "\n",sep="")
-  cat(" ------ ","\n")
+
+# Function that uses tidyverse functions
+eval.func4 <- function(x,data=Book1,objective="max"){
+  data <- data %>%
+    mutate(increase =x) %>% summarise(
+      f1 =  sum(retention.f(increase)) , #pessoas retidas
+      f2 =  sum(margin.f(base_price,cost,increase)),
+      f3 =  sum(volume.f(base_price,increase)),
+      inv_f1=-f1, 
+      inv_f2=-f2,
+      inv_f3=-f3) %>%
+    select(f1,f2,f3,inv_f1,inv_f2,inv_f3)
+  if (objective=="max") return(as.numeric(data[2:3]))
+  else return(as.numeric(data[5:6]))
 }
 
+library(mco)
+set.seed(12345)
+m=2 # 3 objectives
+solutions = 16
+n.generations=10000
+# --- real value task:
+D=nrow(Book1)  # dimension
+res<-matrix(nrow=solutions,ncol=m)
 
-# par(mar=c(4.0,4.0,0.1,0.1))
-# I=1:100
-# for(i in I)
-# { P=G[[i]]$value # objectives f1 and f2
-# # color from light gray (75) to dark (1):
-# COL=paste("gray",round(76-i*0.75),sep="")
-# if(i==1) plot(P,xlim=c(0.5,5.0),ylim=c(0,2.0),
-#               xlab="f1",ylab="f2",cex=0.5,col=COL)
-# Pareto=P[G[[i]]$pareto.optimal,]
-# # sort Pareto according to x axis:
-# I=sort.int(Pareto[,1],index.return=TRUE)
-# Pareto=Pareto[I$ix,]
-# points(P,type="p",pch=1,cex=0.5,col=COL)
-# lines(Pareto,type="l",cex=0.5,col=COL)
-# }
+cat("real value task:\n")
+G=nsga2(fn=eval.func4,idim=D,odim=m,
+        lower.bounds=rep(0,D),upper.bounds=rep(1,D),
+        popsize=solutions,generations=1:n.generations,data=Book1, objective="min")
+# show best individuals:
+I=which(G[[n.generations]]$pareto.optimal)
+
+
+for(i in I)
+{
+  x=round(G[[n.generations]]$par[i,],digits=2); cat("Solution ",i,": ",x,"\n",sep=" ")
+  cat(" f= (margin: ",round(eval.func4(x,objective = "max")[1],2),", volume:",round(eval.func4(x,objective = "max")[2],2),")",
+      "\n",sep="")
+  cat(" ------ ","\n")
+  res[i,]=eval.func4(x,objective = "max")
+}
+data.plot <- as.data.frame(res) 
+data.plot$Model = rep(paste0("S", 1:solutions)) 
+
+names(data.plot) <- c("margin","volume","Model")
+
+ggplot(data.plot, aes(x=margin, y=volume, color="red", shape="",label=Model)) +
+  geom_point() + geom_text(aes(label=Model),hjust=-0.5, vjust=-1,size=3.5) +
+  geom_smooth(method=loess, color="gray")
+
 
