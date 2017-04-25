@@ -281,14 +281,29 @@ eval.func4 <- function(x,data=Book1,objective="max"){
 library(mco)
 set.seed(12345)
 m=2 # 3 objectives
-solutions = 16
-n.generations=10000
+solutions = 20
+n.generations=1000
 # --- real value task:
 D=nrow(Book1)  # dimension
 res<-matrix(nrow=solutions,ncol=m)
 
-cat("real value task:\n")
-G=nsga2(fn=eval.func4,idim=D,odim=m,
+## constrains = average inscrease > min.increase & loss ratio < max.loss
+g <- function(x,data=Book1,min.increase=0.03,max.loss=0.7) { 
+  data <- data %>%
+    mutate(increase =x) %>% summarise(
+      mean.increase =  sum(base_price*(1+increase))/sum(base_price)-1,
+      lossratio =  sum(cost)/sum(base_price*(1+increase))) %>%
+    select(mean.increase,lossratio)
+   return(c(as.numeric(data[1]-min.increase),as.numeric(max.loss-data[2])))
+}
+
+# #test function
+# s=rep(0,D) 
+# g(s,Book1,min.increase=0,max.loss=0.5)
+# class(g(s,Book1))
+
+#optimization
+G=nsga2(fn=eval.func4,idim=D,odim=m,constraints=g,
         lower.bounds=rep(0,D),upper.bounds=rep(1,D),
         popsize=solutions,generations=1:n.generations,data=Book1, objective="min")
 # show best individuals:
