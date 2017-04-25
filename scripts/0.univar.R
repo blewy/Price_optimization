@@ -282,7 +282,7 @@ library(mco)
 set.seed(12345)
 m=2 # 3 objectives
 solutions = 20
-n.generations=1000
+n.generations=10000
 # --- real value task:
 D=nrow(Book1)  # dimension
 res<-matrix(nrow=solutions,ncol=m)
@@ -294,16 +294,16 @@ g <- function(x,data=Book1,min.increase=0.03,max.loss=0.7) {
       mean.increase =  sum(base_price*(1+increase))/sum(base_price)-1,
       lossratio =  sum(cost)/sum(base_price*(1+increase))) %>%
     select(mean.increase,lossratio)
-   return(c(as.numeric(data[1]-min.increase),as.numeric(max.loss-data[2])))
+   return(c((data$mean.increase-min.increase),(max.loss-data$lossratio)))
 }
 
 # #test function
 # s=rep(0,D) 
-# g(s,Book1,min.increase=0,max.loss=0.5)
+# (g(s,Book1,min.increase=0,max.loss=0.5))
 # class(g(s,Book1))
 
 #optimization
-G=nsga2(fn=eval.func4,idim=D,odim=m,constraints=g,
+G=nsga2(fn=eval.func4,idim=D,odim=m,# constraints=g,
         lower.bounds=rep(0,D),upper.bounds=rep(1,D),
         popsize=solutions,generations=1:n.generations,data=Book1, objective="min")
 # show best individuals:
@@ -313,8 +313,7 @@ I=which(G[[n.generations]]$pareto.optimal)
 for(i in I)
 {
   x=round(G[[n.generations]]$par[i,],digits=2); cat("Solution ",i,": ",x,"\n",sep=" ")
-  cat(" f= (margin: ",round(eval.func4(x,objective = "max")[1],2),", volume:",round(eval.func4(x,objective = "max")[2],2),")",
-      "\n",sep="")
+  cat(" f= (margin: ",round(eval.func4(x,objective = "max")[1],2),", volume:",round(eval.func4(x,objective = "max")[2],2),"); Increase:", g(x,min.increase=0,max.loss=0)[1], "; Loss ",-g(x,min.increase=0,max.loss=0)[2]  ,"\n",sep="")
   cat(" ------ ","\n")
   res[i,]=eval.func4(x,objective = "max")
 }
