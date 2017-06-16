@@ -80,7 +80,7 @@ eval.func=function(x,data=Book1,metric=4)
 }
 
 # Function that uses tidyverse functions
-eval.func2 <- function(x,data=Book1, metric=1){
+eval.func2 <- function(x,data=Book1, metric=1,penalty=0){
   data <- data %>%
     mutate(increase =x) %>% summarise(
             f1 =  sum(retention.f(increase)) /n() ,
@@ -93,10 +93,24 @@ eval.func2 <- function(x,data=Book1, metric=1){
   return(as.numeric(data[metric]))
 }
 
+# Function that uses tidyverse, this function can offer the chance to
+# 
+eval.func2.penalty <- function(x,data=Book1,metric=1,penalty=100000,null.hipotesis=0.8,use.penalty=TRUE){
+  data <- data %>%
+    mutate(increase =x) %>% summarise(
+      f1 =  sum(retention.f(increase)) /n() ,
+      f2 =  sum(margin.f(base_price,cost,increase))-(use.penalty*(f1-null.hipotesis)^2*penalty),
+      inv_f1=1-f1,
+      inv_f2=-f2) %>% select(f1,f2,inv_f1,inv_f2)
+  return(as.numeric(data[metric]))
+}
+
 D=nrow(Book1) # dimension
 s=rep(0,D) 
-eval.func2(s,Book1,metric = 1)
+eval.func2(s,Book1,metric = 2)
 eval.func(s,Book1,metric = 3)
+
+eval.func2.penalty(s,Book1,metric = 2,penalty=100000,use.penalty=TRUE)
 #test evl function
 #D=nrow(Book1) # dimension
 #s=rep(0,D) 
@@ -111,15 +125,20 @@ source("./scripts/suport_scripts/hill.R") # load the hill climbing methods
 
 D=nrow(Book1) # dimension
 s=rep(0,D) # c(0,0,0,0,...)
-C=list(maxit=10000,REPORT=1000)
+C=list(maxit=1000,REPORT=100)
 rchange=function(par,lower,upper) # real value change
 { 
   hchange(par,lower,upper,rnorm,mean=0,sd=0.5,round=FALSE) 
 }
 s=runif(D,0,1) # initial search
 set.seed(12345) #
-hill.solution<-hclimbing(s,eval.func2,change=rchange,lower=rep(0,D),upper=rep(1,D),control=C,type="max",data=Book1,metric=1)
-hill.solution
+#hill.solution<-hclimbing(s,eval.func2,change=rchange,lower=rep(0,D),upper=rep(1,D),control=C,type="max",data=Book1,metric=1)
+#hill.solution
+
+hill.solution.penalty<-hclimbing(s,eval.func2.penalty,change=rchange,lower=rep(0,D),upper=rep(1,D),control=C,type="max",data=Book1,metric=2,penalty=100000000000)
+hill.solution.penalty$sol
+
+eval.func2.penalty(hill.solution.penalty$sol,Book1,metric = 1,penalty=100,use.penalty=TRUE)
 
 # set.seed(12345) #
 # hclimbing(s,eval.func,change=rchange,lower=rep(0,D),upper=rep(1,D),control=C,type="max",data=Book1,metric=1)
@@ -281,8 +300,8 @@ eval.func4 <- function(x,data=Book1,objective="max"){
 library(mco)
 set.seed(12345)
 m=2 # 3 objectives
-solutions = 20
-n.generations=10000
+solutions = 4*10
+n.generations=100000
 # --- real value task:
 D=nrow(Book1)  # dimension
 res<-matrix(nrow=solutions,ncol=m)
