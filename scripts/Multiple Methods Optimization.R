@@ -117,6 +117,8 @@ eval.func2.penalty(s,Book1,metric = 2,penalty=100000,use.penalty=TRUE)
 #eval.func(s,metric = 1)
 
 
+
+
 # --------------- Local Search Methods -----------------
 
 ###-------------------- Hill Climb ---------------------
